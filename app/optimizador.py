@@ -5,12 +5,12 @@ import pulp
 import time
 
 # Configuración de la página
-st.set_page_config(page_title="Optimizador de Rieles UC", layout="wide")
+st.set_page_config(page_title="Optimizador de Rieles", layout="wide")
 
 st.title("🏗️ Optimizador de Corte de Rieles")
 st.markdown("""
 Esta herramienta calcula la cantidad mínima de barras necesarias para cubrir tu pedido, 
-optimizando los cortes para perder la menor cantidad de material posible.\n Para que funcione debes tener todas las medidas en una misma columna en el Excel y la primera celda debe llamrse "Medida (cm)"
+optimizando los cortes para perder la menor cantidad de material posible.\n Para que funcione debes tener todas las medidas en una misma columna en el Excel y la primera celda debe llamarse "Medida (cm)"
 """)
 
 # Barra lateral para parámetros
@@ -40,7 +40,7 @@ if uploaded_file:
             st.warning(f"No se detectó el nombre de la columna. Usando la primera: '{col_medida}'")
 
             df[col_medida] = pd.to_numeric(df[col_medida], errors='coerce')
-            df = df.dropna(subset=[col_medida]
+            df = df.dropna(subset=[col_medida])
 
         # --- CAMBIO PARA DECIMALES ---
         # Asegurar que los datos sean numéricos y redondear para evitar errores de precisión de punto flotante
