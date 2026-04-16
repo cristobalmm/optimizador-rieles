@@ -1,0 +1,129 @@
+import streamlit as st
+import pandas as pd
+from itertools import combinations_with_replacement
+import pulp
+import time
+
+# Configuración de la página
+st.set_page_config(page_title="Optimizador de Rieles UC", layout="wide")
+
+st.title("🏗️ Optimizador de Corte de Rieles")
+st.markdown("""
+Esta herramienta calcula la cantidad mínima de barras de 580 cm necesarias para cubrir tu pedido, 
+optimizando los cortes para perder la menor cantidad de material posible.
+""")
+
+# Barra lateral para parámetros
+with st.sidebar:
+    st.header("Configuración")
+    largo_max = st.number_input("Largo de la barra maestra (cm)", value=580)
+    max_piezas = st.number_input("Máximo de piezas por barra", value=4)
+    
+uploaded_file = st.file_uploader("Sube tu archivo Excel (.xlsx)", type=["xlsx"])
+
+if uploaded_file:
+    try:
+        # 1. Leer archivo
+        df = pd.read_excel(uploaded_file)
+        
+        # Intentar encontrar la columna de medidas
+        col_medida = None
+        for col in df.columns:
+            if 'medida' in col.lower() or 'largo' in col.lower() or 'cm' in col.lower():
+                col_medida = col
+                break
+        
+        if col_medida is None:
+            col_medida = df.columns[0]
+            st.warning(f"No se detectó el nombre de la columna. Usando la primera: '{col_medida}'")
+
+        # 2. Procesar Demanda
+        demanda = df[col_medida].value_counts().to_dict()
+        
+        st.subheader("📊 Resumen de Pedido")
+        st.write(f"Total de piezas solicitadas: **{sum(demanda.values())}**")
+        st.write(f"Medidas únicas detectadas: **{len(demanda)}**")
+
+        if st.button("🚀 Calcular Optimización"):
+            with st.spinner("Generando patrones y resolviendo el modelo matemático..."):
+                start_time = time.time()
+                
+                # 3. Generar Patrones Únicos (Flexibles)
+                patrones_set = set()
+                # Iteramos para grupos de 1 hasta el máximo definido
+                for r in range(1, max_piezas + 1):
+                    for combo in combinations_with_replacement(demanda.keys(), r):
+                        if sum(combo) <= largo_max:
+                            # Filtro lógico: No crear patrones con más piezas de las que existen en total
+                            valido = True
+                            for m in set(combo):
+                                if combo.count(m) > demanda[m]:
+                                    valido = False
+                                    break
+                            if valido:
+                                patrones_set.add(tuple(sorted(combo)))
+                
+                patrones_validos = list(patrones_set)
+                
+                # 4. Definir Problema de Programación Entera
+                prob = pulp.LpProblem("Corte_Rieles", pulp.LpMinimize)
+                x = pulp.LpVariable.dicts("P", range(len(patrones_validos)), lowBound=0, cat='Integer')
+
+                # Función Objetivo: Minimizar barras totales
+                prob += pulp.lpSum([x[i] for i in range(len(patrones_validos))])
+
+                # Restricciones de Demanda
+                for medida, cant in demanda.items():
+                    prob += pulp.lpSum([x[i] * patrones_validos[i].count(medida) for i in range(len(patrones_validos))]) == cant
+
+                # Resolver
+                prob.solve(pulp.PULP_CBC_CMD(msg=0))
+                
+                end_time = time.time()
+
+            # 5. Mostrar Resultados
+            if pulp.LpStatus[prob.status] == 'Optimal':
+                st.success(f"✅ ¡Optimización completada en {end_time - start_time:.2f} segundos!")
+                
+                col1, col2, col3 = st.columns(3)
+                total_barras = int(pulp.value(prob.objective))
+                
+                # Calcular residuo
+                residuo_total = 0
+                resumen_cortes = []
+                
+                for i in range(len(patrones_validos)):
+                    cantidad_barras = int(x[i].varValue)
+                    if cantidad_barras > 0:
+                        largo_usado = sum(patrones_validos[i])
+                        sobrante = largo_max - largo_usado
+                        residuo_total += (sobrante * cantidad_barras)
+                        resumen_cortes.append({
+                            "Cantidad de Barras": cantidad_barras,
+                            "Patrón de Corte": str(list(patrones_validos[i])),
+                            "Uso (cm)": largo_usado,
+                            "Sobrante c/u (cm)": sobrante
+                        })
+
+                with col1:
+                    st.metric("Barras de 580cm necesarias", total_barras)
+                with col2:
+                    st.metric("Residuo Total", f"{residuo_total} cm")
+                with col3:
+                    eficiencia = (1 - (residuo_total / (total_barras * largo_max))) * 100
+                    st.metric("Eficiencia de Material", f"{eficiencia:.2f}%")
+
+                st.subheader("📋 Plan de Corte Detallado")
+                resultados_df = pd.DataFrame(resumen_cortes)
+                st.table(resultados_df)
+                
+                # Opción para descargar
+                csv = resultados_df.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Descargar Plan de Corte (CSV)", csv, "plan_de_corte.csv", "text/csv")
+            else:
+                st.error("No se pudo encontrar una solución exacta. Revisa si alguna pieza es más larga que la barra maestra.")
+
+    except Exception as e:
+        st.error(f"Error al procesar el archivo: {e}")
+else:
+    st.info("👋 Por favor, sube un archivo Excel para comenzar.")
