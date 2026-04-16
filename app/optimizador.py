@@ -9,14 +9,15 @@ st.set_page_config(page_title="Optimizador de Rieles UC", layout="wide")
 
 st.title("🏗️ Optimizador de Corte de Rieles")
 st.markdown("""
-Esta herramienta calcula la cantidad mínima de barras de 580 cm necesarias para cubrir tu pedido, 
+Esta herramienta calcula la cantidad mínima de barras necesarias para cubrir tu pedido, 
 optimizando los cortes para perder la menor cantidad de material posible.
 """)
 
 # Barra lateral para parámetros
 with st.sidebar:
     st.header("Configuración")
-    largo_max = st.number_input("Largo de la barra maestra (cm)", value=580)
+    # Cambiado a float y agregado step para decimales
+    largo_max = st.number_input("Largo de la barra maestra (cm)", value=580.0, step=0.5, format="%.2f")
     max_piezas = st.number_input("Máximo de piezas por barra", value=4)
     
 uploaded_file = st.file_uploader("Sube tu archivo Excel (.xlsx)", type=["xlsx"])
@@ -37,6 +38,11 @@ if uploaded_file:
             col_medida = df.columns[0]
             st.warning(f"No se detectó el nombre de la columna. Usando la primera: '{col_medida}'")
 
+        # --- CAMBIO PARA DECIMALES ---
+        # Asegurar que los datos sean numéricos y redondear para evitar errores de precisión de punto flotante
+        df[col_medida] = pd.to_numeric(df[col_medida], errors='coerce').round(2)
+        df = df.dropna(subset=[col_medida])
+        
         # 2. Procesar Demanda
         demanda = df[col_medida].value_counts().to_dict()
         
@@ -50,11 +56,12 @@ if uploaded_file:
                 
                 # 3. Generar Patrones Únicos (Flexibles)
                 patrones_set = set()
-                # Iteramos para grupos de 1 hasta el máximo definido
+                medidas_disponibles = sorted(demanda.keys())
+                
                 for r in range(1, max_piezas + 1):
-                    for combo in combinations_with_replacement(demanda.keys(), r):
-                        if sum(combo) <= largo_max:
-                            # Filtro lógico: No crear patrones con más piezas de las que existen en total
+                    for combo in combinations_with_replacement(medidas_disponibles, r):
+                        # Usamos un pequeño margen de error (1e-7) para comparaciones de punto flotante
+                        if sum(combo) <= (largo_max + 1e-7):
                             valido = True
                             for m in set(combo):
                                 if combo.count(m) > demanda[m]:
@@ -89,26 +96,26 @@ if uploaded_file:
                 total_barras = int(pulp.value(prob.objective))
                 
                 # Calcular residuo
-                residuo_total = 0
+                residuo_total = 0.0
                 resumen_cortes = []
                 
                 for i in range(len(patrones_validos)):
                     cantidad_barras = int(x[i].varValue)
                     if cantidad_barras > 0:
-                        largo_usado = sum(patrones_validos[i])
-                        sobrante = largo_max - largo_usado
+                        largo_usado = round(sum(patrones_validos[i]), 2)
+                        sobrante = round(largo_max - largo_usado, 2)
                         residuo_total += (sobrante * cantidad_barras)
                         resumen_cortes.append({
                             "Cantidad de Barras": cantidad_barras,
-                            "Patrón de Corte": str(list(patrones_validos[i])),
+                            "Patrón de Corte": " + ".join([str(m) for m in patrones_validos[i]]),
                             "Uso (cm)": largo_usado,
                             "Sobrante c/u (cm)": sobrante
                         })
 
                 with col1:
-                    st.metric("Barras de 580cm necesarias", total_barras)
+                    st.metric(f"Barras de {largo_max}cm", total_barras)
                 with col2:
-                    st.metric("Residuo Total", f"{residuo_total} cm")
+                    st.metric("Residuo Total", f"{residuo_total:.2f} cm")
                 with col3:
                     eficiencia = (1 - (residuo_total / (total_barras * largo_max))) * 100
                     st.metric("Eficiencia de Material", f"{eficiencia:.2f}%")
@@ -121,7 +128,7 @@ if uploaded_file:
                 csv = resultados_df.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Descargar Plan de Corte (CSV)", csv, "plan_de_corte.csv", "text/csv")
             else:
-                st.error("No se pudo encontrar una solución exacta. Revisa si alguna pieza es más larga que la barra maestra.")
+                st.error("No se pudo encontrar una solución. Revisa si alguna pieza es más larga que la barra maestra.")
 
     except Exception as e:
         st.error(f"Error al procesar el archivo: {e}")
