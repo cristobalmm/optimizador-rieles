@@ -30,13 +30,17 @@ if uploaded_file:
         # Intentar encontrar la columna de medidas
         col_medida = None
         for col in df.columns:
-            if 'medida' in col.lower() or 'largo' in col.lower() or 'cm' in col.lower():
+            nombre_col = str(col).lower()
+            if 'medida' in nombre_col or 'largo' in nombre_col or 'cm' in nombre_col:
                 col_medida = col
                 break
         
         if col_medida is None:
             col_medida = df.columns[0]
             st.warning(f"No se detectó el nombre de la columna. Usando la primera: '{col_medida}'")
+
+            df[col_medida] = pd.to_numeric(df[col_medida], errors='coerce')
+            df = df.dropna(subset=[col_medida]
 
         # --- CAMBIO PARA DECIMALES ---
         # Asegurar que los datos sean numéricos y redondear para evitar errores de precisión de punto flotante
