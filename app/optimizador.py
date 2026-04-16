@@ -10,7 +10,7 @@ st.set_page_config(page_title="Optimizador de Rieles UC", layout="wide")
 st.title("🏗️ Optimizador de Corte de Rieles")
 st.markdown("""
 Esta herramienta calcula la cantidad mínima de barras necesarias para cubrir tu pedido, 
-optimizando los cortes para perder la menor cantidad de material posible.
+optimizando los cortes para perder la menor cantidad de material posible.\n Para que funcione debes tener todas las medidas en una misma columna en el Excel y la primera celda debe llamrse "Medida (cm)"
 """)
 
 # Barra lateral para parámetros
